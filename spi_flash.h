@@ -8,17 +8,6 @@
   */
 
 
-#define SPI_FLASH_OP_READ 0x03
-#define SPI_FLASH_OP_WRITE 0x02
-
-#define SPI_FLASH_OP_WR_ENABLE 0x06
-#define SPI_FLASH_OP_CHIP_ERASE 0x60
-#define SPI_FLASH_OP_STAT1 0x05
-#define SPI_FLASH_OP_STAT2 0x35
-
-#define STAT1_BUSY_FLAG 0x01
-
-
 typedef struct{
   mrt_spi_handle_t mSpi;
   mrt_gpio_t mCS;

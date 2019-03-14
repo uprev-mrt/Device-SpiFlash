@@ -7,34 +7,63 @@
   *@Datasheet http://www.adestotech.com/wp-content/uploads/DS-AT25SF041_044.pdf
   */
 
+#include "spi_flash.h"
+
+
+//Op codes
+#define SPI_FLASH_OP_READ 0x03
+#define SPI_FLASH_OP_WRITE 0x02
+#define SPI_FLASH_OP_WR_ENABLE 0x06
+#define SPI_FLASH_OP_CHIP_ERASE 0x60
+#define SPI_FLASH_OP_STAT1 0x05
+#define SPI_FLASH_OP_STAT2 0x35
+
+//register flags
+#define STAT1_BUSY_FLAG 0x01
+
+//Macro for setting read/write address
+#define SET_ADDR(op,addr,pAddr) pAddr[0] = op; pAddr[1] = addr >> 16; pAddr[2] = addr>>8; pAddr[3] = addr;
+
 
 mrt_status_t spi_flash_init(spi_flash_t* dev, spi_flash_hw_cfg_t* hw, uint32_t memsize, uint32_t pagesize )
 {
-  //TODO
+  memcpy(&dev->mHW, &hw, sizeof(spi_flash_hw_cfg_t));
+  dev->mPageSize = pagesize;
+  dev->mMemorySize = memsize;
+  dev->mStat1 = 0;
+  dev->mStat2 = 0;
+
   return MRT_STATUS_OK;
 }
 
 
 mrt_status_t spi_flash_erase_chip(spi_flash_t* dev)
 {
-  //TODO port
-  writeEnable();
 	uint8_t op = FLASH_OP_CHIP_ERASE;
 	uint8_t op_enable[2] = {0x01, 0x00};
+  //erasing the chip requires two op codes for security
 
-	SET_GPIO(cs_pin, LOW);
-	HAL_SPI_Transmit(spi_handle, op_enable, 2, 500);
-	SET_GPIO(cs_pin, HIGH);
+  //enable write
+  spi_flash_enable_write(dev);
 
-	writeEnable();
+  //select chip , write op code and deselect
+	MRT_GPIO_WRITE(dev->mHW.mCS, LOW);
 
-	SET_GPIO(cs_pin, LOW);
-	HAL_SPI_Transmit(spi_handle, &op, 1, 500);
-	SET_GPIO(cs_pin, HIGH);
+	MRT_SPI_TRANSMIT(spi_handle, op_enable, 2, 50);
 
+	MRT_GPIO_WRITE(dev->mHW.mCS, HIGH);
 
+  //enable write
+	spi_flash_enable_write(dev);
 
-	wait();
+  //select chip , write op code and deselect
+	MRT_GPIO_WRITE(dev->mHW.mCS, LOW);
+
+	MRT_SPI_TRANSMIT(spi_handle, &op, 1, 50);
+
+	MRT_GPIO_WRITE(dev->mHW.mCS, HIGH);
+
+	spi_flash_wait(dev, 1000); //give a long timeout because it might be erasing a lot of data
 
   return MRT_STATUS_OK;
 }
@@ -42,18 +71,19 @@ mrt_status_t spi_flash_erase_chip(spi_flash_t* dev)
 
 mrt_status_t spi_flash_read(spi_flash_t* dev, uint32_t addr, uint8_t* data, uint16_t len)
 {
-  //TODO port
+  uint8_t pAddr[4];
+  MRT_GPIO_WRITE(dev->mHW.mCS, LOW);
 
-  SET_GPIO(cs_pin, LOW);
 
+	SET_ADDR(FLASH_OP_READ, addr,pAddr);
+	MRT_SPI_TRANSMIT(spi_handle, pAddr, 4, 50);
+	MRT_SPI_RECIEVE(spi_handle, data , len, 50);
 
-	SET_ADDR(FLASH_OP_READ, addr);
-	HAL_SPI_Transmit(spi_handle, pAddr, 4, 500);
-	HAL_SPI_Receive(spi_handle, data , len, 500);
-	SET_GPIO(cs_pin, HIGH);
-	wait();
-	HAL_Delay(5);
-	return 0;
+	MRT_GPIO_WRITE(dev->mHW.mCS, HIGH);
+
+  spi_flash_wait(dev,100);
+
+  MRT_DELAY_MS(5);
 
   return MRT_STATUS_OK;
 }
@@ -61,8 +91,8 @@ mrt_status_t spi_flash_read(spi_flash_t* dev, uint32_t addr, uint8_t* data, uint
 
 mrt_status_t spi_flash_write(spi_flash_t* dev, uint32_t addr, uint8_t* data, uint16_t len)
 {
-  //TODO port
-	uint32_t remPg = PAGE_SIZE - (addr % PAGE_SIZE);		//number of bytes remaining on current page
+  uint8_t pAddr[4];
+	uint32_t remPg = dev->mPageSize - (addr % dev->mPageSize);		//number of bytes remaining on current page
 	uint16_t blockLen = len;
 	uint16_t offset = 0;
 
@@ -71,36 +101,42 @@ mrt_status_t spi_flash_write(spi_flash_t* dev, uint32_t addr, uint8_t* data, uin
 		blockLen = remPg;
 	}
 
-	writeEnable();
+	spi_flash_enable_write(dev);
 
-	SET_GPIO(cs_pin, LOW);
+	MRT_GPIO_WRITE(dev->mHW.mCS, LOW);
 
-	////printf("writing %d bytes to %d\n", blockLen, addr);
-	SET_ADDR(FLASH_OP_WRITE, addr);
-	HAL_SPI_Transmit(spi_handle, pAddr, 4, 500);
-	HAL_SPI_Transmit(spi_handle, &data[offset] , blockLen, 500);
-	SET_GPIO(cs_pin, HIGH);
-	wait();
-	HAL_Delay(5);
+	SET_ADDR(FLASH_OP_WRITE, addr, pAddr);
+	MRT_SPI_TRANSMIT(spi_handle, pAddr, 4, 500);
+	MRT_SPI_TRANSMIT(spi_handle, &data[offset] , blockLen, 500);
+
+	MRT_GPIO_WRITE(dev->mHW.mCS, HIGH);
+
+  spi_flash_wait(dev,100);
+	MRT_DELAY_MS(5);
 
 	len -=blockLen;
 	addr += blockLen;
 	offset+= blockLen;
-	blockLen = PAGE_SIZE;
+	blockLen = dev->mPageSize;
 
 	while(len > 0)
 	{
 
-		writeEnable();
+		spi_flash_enable_write(dev);
 
 		////printf("writing %d bytes to %d\n", blockLen, addr);
-		SET_GPIO(cs_pin, LOW);
-		SET_ADDR(FLASH_OP_WRITE, addr);
-		HAL_SPI_Transmit(spi_handle, pAddr, 4, 100);
-		HAL_SPI_Transmit(spi_handle, &data[offset] , blockLen, 500);
-		SET_GPIO(cs_pin, HIGH);
-		wait();
-		HAL_Delay(5);
+		MRT_GPIO_WRITE(dev->mHW.mCS, LOW
+
+		SET_ADDR(FLASH_OP_WRITE, addr, pAddr);
+
+		MRT_SPI_TRANSMIT(spi_handle, pAddr, 4, 100);
+		MRT_SPI_TRANSMIT(spi_handle, &data[offset] , blockLen, 500);
+
+		MRT_GPIO_WRITE(dev->mHW.mCS, HIGH);
+
+		spi_flash_wait(dev,100);
+
+		MRT_DELAY_MS(5);
 
 		len -=blockLen;
 		addr += blockLen;
