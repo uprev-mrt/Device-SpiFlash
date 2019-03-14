@@ -72,3 +72,12 @@ mrt_status_t spi_flash_enable_write(spi_flash_t* dev);
   *@return status
   */
 mrt_status_t spi_flash_wait(spi_flash_t* dev, uint32_t timeout_ms);
+
+/**
+  *@brief device test intended for initial hardware bringup. addr and len can be used to set a reserved testing area
+  *@param dev ptr to device to test
+  *@param addr address in memory to test
+  *@param len len of data to test with
+  *@return status of test
+  */
+mrt_status_t spi_flash_test(spi_flash_t* dev, uint32_t addr, uint16_t len);

@@ -205,3 +205,37 @@ mrt_status_t spi_flash_wait(spi_flash_t* dev, uint32_t timeout_ms)
   else
     return MRT_STATUS_ERROR;
 }
+
+mrt_status_t spi_flash_test(spi_flash_t* dev, uint32_t addr, uint16_t len)
+{
+  uint8_t testData[len];
+  uint8_t testCompData[len];
+
+  //Generate test data set
+  uint8_t testByte = 64;  //number picked at random just to offset data from i
+  for(int i =0; i < len; i++)
+  {
+    testData[i] = testByte++;
+  }
+
+  //clear test comparison data
+  memset(testCompData, 0, len);
+
+  //write test data to flash
+  spi_flash_write(dev, addr,testData, len);
+
+  //read back from memory
+  spi_flash_read(dev,addr,testCompData, len);
+
+  //compare data
+  for(int i =0; i < len; i++)
+  {
+    //if a byte doesnt match, we have an error
+    if(testData[i] != testCompData[i])
+    {
+      return MRT_STATUS_ERROR;
+    }
+  }
+
+  return MRT_STATUS_OK;
+}
