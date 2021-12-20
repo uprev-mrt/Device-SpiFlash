@@ -6,7 +6,7 @@ category: Device/Memory
 requires: []
 description: Spi flash IC 
 datasheet: http://www.adestotech.com/wp-content/uploads/DS-AT25SF041_044.pdf
-mfg: Adesto
-mfg_pn: AT25SF041-SHD-B
+mfr: Adesto
+mfr_pn: AT25SF041-SHD-B
 digikey_pn: 	1265-1173-5-ND
 
